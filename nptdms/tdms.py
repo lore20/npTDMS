@@ -17,7 +17,7 @@ class TdmsFile(object):
 
     """
 
-    def __init__(self, file, memmap_dir=None, read_metadata_only=False):
+    def __init__(self, file, memmap_dir=None, read_metadata_only=False, exclude=None):
         """Initialise a new TDMS file object, reading all data.
 
         :param file: Either the path to the tdms file to read or an already
@@ -35,6 +35,7 @@ class TdmsFile(object):
         self.segments = []
         self.objects = OrderedDict()
         self.memmap_dir = memmap_dir
+        self.exclude = exclude
 
         if hasattr(file, "read"):
             # Is a file
@@ -73,7 +74,7 @@ class TdmsFile(object):
             with Timer(log, "Read data"):
                 # Now actually read all the data
                 for segment in self.segments:
-                    segment.read_raw_data(open_file)
+                    segment.read_raw_data(open_file, exclude=self.exclude)
 
     def object(self, *path):
         """Get a TDMS object from the file

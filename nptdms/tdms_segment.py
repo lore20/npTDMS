@@ -231,7 +231,7 @@ class TdmsSegment(object):
                         obj.number_values * (self.num_chunks - 1) + int(
                             obj.number_values * self.final_chunk_proportion))
 
-    def read_raw_data(self, f):
+    def read_raw_data(self, f, exclude):
         """Read signal data from file"""
 
         if not self.toc["kTocRawData"]:
@@ -263,23 +263,42 @@ class TdmsSegment(object):
                 else:
                     self._read_interleaved(f, data_objects)
             else:
+
+                start = f.tell()
+
+                positions = []
+                for i, obj in enumerate(self.ordered_objects):
+                    positions.append(obj.number_values*8)
+                positions = np.cumsum(np.array(positions)) + start
+
                 object_data = {}
                 log.debug("Data is contiguous")
-                for obj in self.ordered_objects:
-                    if obj.has_data:
-                        if (chunk == (self.num_chunks - 1) and
-                                self.final_chunk_proportion != 1.0):
-                            number_values = int(
-                                obj.number_values *
-                                self.final_chunk_proportion)
-                        else:
-                            number_values = obj.number_values
-                        object_data[obj.path] = (
-                            obj._read_values(f, number_values))
+                for obj, pos in zip(self.ordered_objects, positions):
+                    if exclude is not None:
+                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    else:
+                        read_this_obj = True
+                    if read_this_obj:
+                        if obj.has_data:
+                            if (chunk == (self.num_chunks - 1) and
+                                    self.final_chunk_proportion != 1.0):
+                                number_values = int(
+                                    obj.number_values *
+                                    self.final_chunk_proportion)
+                            else:
+                                number_values = obj.number_values
+                            f.seek(pos-(number_values*8))
+                            object_data[obj.path] = (
+                                obj._read_values(f, number_values))
 
                 for obj in self.ordered_objects:
-                    if obj.has_data:
-                        obj.tdms_object._update_data(object_data[obj.path])
+                    if exclude is not None:
+                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    else:
+                        read_this_obj = True
+                    if read_this_obj:
+                        if obj.has_data:
+                            obj.tdms_object._update_data(object_data[obj.path])
 
     def _read_interleaved_daqmx(self, f, data_objects):
         """Read data from DAQmx data segment"""
