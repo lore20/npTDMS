@@ -22,6 +22,7 @@ from nptdms.common import toc_properties
 from nptdms import scaling
 from nptdms import types
 
+from IPython import embed as shell
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -69,7 +70,7 @@ class TdmsFile(object):
 
     """
 
-    def __init__(self, file, memmap_dir=None):
+    def __init__(self, file, memmap_dir=None, exclude=None):
         """Initialise a new TDMS file object, reading all data.
 
         :param file: Either the path to the tdms file to read or an already
@@ -84,6 +85,7 @@ class TdmsFile(object):
         self.segments = []
         self.objects = OrderedDict()
         self.memmap_dir = memmap_dir
+        self.exclude = exclude
 
         if hasattr(file, "read"):
             # Is a file
@@ -121,7 +123,7 @@ class TdmsFile(object):
         with Timer(log, "Read data"):
             # Now actually read all the data
             for segment in self.segments:
-                segment.read_raw_data(f)
+                segment.read_raw_data(f, exclude=self.exclude)
 
     def _path(self, *args):
         """Convert group and channel to object path"""
@@ -484,7 +486,7 @@ class _TdmsSegment(object):
                         obj.number_values * (self.num_chunks - 1) + int(
                             obj.number_values * self.final_chunk_proportion))
 
-    def read_raw_data(self, f):
+    def read_raw_data(self, f, exclude):
         """Read signal data from file"""
 
         if not self.toc["kTocRawData"]:
@@ -513,23 +515,42 @@ class _TdmsSegment(object):
                 else:
                     self._read_interleaved(f, data_objects)
             else:
+                
+                start = f.tell()
+
+                positions = []
+                for i, obj in enumerate(self.ordered_objects):
+                    positions.append(obj.number_values*8)
+                positions = np.cumsum(np.array(positions)) + start
+
                 object_data = {}
                 log.debug("Data is contiguous")
-                for obj in self.ordered_objects:
-                    if obj.has_data:
-                        if (chunk == (self.num_chunks - 1) and
-                                self.final_chunk_proportion != 1.0):
-                            number_values = int(
-                                obj.number_values *
-                                self.final_chunk_proportion)
-                        else:
-                            number_values = obj.number_values
-                        object_data[obj.path] = (
-                            obj._read_values(f, number_values))
+                for obj, pos in zip(self.ordered_objects, positions):
+                    if exclude is not None:
+                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    else:
+                        read_this_obj = True
+                    if read_this_obj:
+                        if obj.has_data:
+                            if (chunk == (self.num_chunks - 1) and
+                                    self.final_chunk_proportion != 1.0):
+                                number_values = int(
+                                    obj.number_values *
+                                    self.final_chunk_proportion)
+                            else:
+                                number_values = obj.number_values
+                            f.seek(pos-(number_values*8))
+                            object_data[obj.path] = (
+                                obj._read_values(f, number_values))
 
                 for obj in self.ordered_objects:
-                    if obj.has_data:
-                        obj.tdms_object._update_data(object_data[obj.path])
+                    if exclude is not None:
+                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    else:
+                        read_this_obj = True
+                    if read_this_obj:
+                        if obj.has_data:
+                            obj.tdms_object._update_data(object_data[obj.path])
 
     def _read_interleaved_numpy(self, f, data_objects):
         """Read interleaved data where all channels have a numpy type"""
