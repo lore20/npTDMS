@@ -231,7 +231,7 @@ class TdmsSegment(object):
                         obj.number_values * (self.num_chunks - 1) + int(
                             obj.number_values * self.final_chunk_proportion))
 
-    def read_raw_data(self, f, exclude):
+    def read_raw_data(self, f, include):
         """Read signal data from file"""
 
         if not self.toc["kTocRawData"]:
@@ -242,7 +242,7 @@ class TdmsSegment(object):
         total_data_size = self.next_segment_offset - self.raw_data_offset
         log.debug(
             "Reading %d bytes of data at %d in %d chunks",
-            total_data_size, f.tell(), self.num_chunks)
+            (total_data_size, f.tell(), self.num_chunks))
 
         for chunk in range(self.num_chunks):
             if self.toc['kTocDAQmxRawData']:
@@ -274,10 +274,12 @@ class TdmsSegment(object):
                 object_data = {}
                 log.debug("Data is contiguous")
                 for obj, pos in zip(self.ordered_objects, positions):
-                    if exclude is not None:
-                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
-                    else:
+
+                    if include == 'all':
                         read_this_obj = True
+                    else:
+                        read_this_obj = np.array([(incl in obj.path) for incl in include]).sum() == 1
+
                     if read_this_obj:
                         if obj.has_data:
                             if (chunk == (self.num_chunks - 1) and
@@ -292,8 +294,8 @@ class TdmsSegment(object):
                                 obj._read_values(f, number_values))
 
                 for obj in self.ordered_objects:
-                    if exclude is not None:
-                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    if include is not None:
+                       read_this_obj = np.array([(incl in obj.path) for incl in include]).sum() == 1
                     else:
                         read_this_obj = True
                     if read_this_obj:
