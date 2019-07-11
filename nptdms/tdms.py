@@ -70,7 +70,7 @@ class TdmsFile(object):
 
     """
 
-    def __init__(self, file, memmap_dir=None, exclude=None):
+    def __init__(self, file, memmap_dir=None, include='all'):
         """Initialise a new TDMS file object, reading all data.
 
         :param file: Either the path to the tdms file to read or an already
@@ -85,7 +85,7 @@ class TdmsFile(object):
         self.segments = []
         self.objects = OrderedDict()
         self.memmap_dir = memmap_dir
-        self.exclude = exclude
+        self.include = include
 
         if hasattr(file, "read"):
             # Is a file
@@ -123,7 +123,7 @@ class TdmsFile(object):
         with Timer(log, "Read data"):
             # Now actually read all the data
             for segment in self.segments:
-                segment.read_raw_data(f, exclude=self.exclude)
+                segment.read_raw_data(f, include=self.include)
 
     def _path(self, *args):
         """Convert group and channel to object path"""
@@ -486,7 +486,7 @@ class _TdmsSegment(object):
                         obj.number_values * (self.num_chunks - 1) + int(
                             obj.number_values * self.final_chunk_proportion))
 
-    def read_raw_data(self, f, exclude):
+    def read_raw_data(self, f, include):
         """Read signal data from file"""
 
         if not self.toc["kTocRawData"]:
@@ -526,10 +526,12 @@ class _TdmsSegment(object):
                 object_data = {}
                 log.debug("Data is contiguous")
                 for obj, pos in zip(self.ordered_objects, positions):
-                    if exclude is not None:
-                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
-                    else:
+                    
+                    if include == 'all':
                         read_this_obj = True
+                    else:
+                        read_this_obj = np.array([(incl in obj.path) for incl in include]).sum() == 1
+
                     if read_this_obj:
                         if obj.has_data:
                             if (chunk == (self.num_chunks - 1) and
@@ -542,10 +544,10 @@ class _TdmsSegment(object):
                             f.seek(pos-(number_values*8))
                             object_data[obj.path] = (
                                 obj._read_values(f, number_values))
-
+                
                 for obj in self.ordered_objects:
-                    if exclude is not None:
-                       read_this_obj = np.array([(ex in obj.path) for ex in exclude]).sum() == 0
+                    if include is not None:
+                       read_this_obj = np.array([(incl in obj.path) for incl in include]).sum() == 1
                     else:
                         read_this_obj = True
                     if read_this_obj:
